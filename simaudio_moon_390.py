@@ -6,8 +6,9 @@ BUFFER_SIZE = 4096
 
 
 class SimaudioConnection(asyncio.Protocol):
-    def __init__(self, loop):
+    def __init__(self, loop, message_handler):
         self.loop = loop
+        self.__message_handler = message_handler
         self.transport = None
 
     def connection_made(self, transport):
@@ -16,16 +17,19 @@ class SimaudioConnection(asyncio.Protocol):
 
     def data_received(self, data):
         print(f'data received: {data}')
+        for message in filter(None, data.split(b'\r')):
+            self.__message_handler(message)
 
     def connection_lost(self, exc):
         print('connection lost, stopping event loop')
         self.loop.stop()
 
+
 class SimaudioMoon390:
     def __init__(self, ip: str):
         print(f"connecting to {ip}:50000")
         self.__loop = asyncio.get_event_loop()
-        self.__connection = SimaudioConnection(self.__loop)
+        self.__connection = SimaudioConnection(self.__loop, self.__on_message)
         self.__coro = self.__loop.create_connection(lambda: self.__connection, ip, 50000)
         self.loop_once()
 
@@ -36,6 +40,27 @@ class SimaudioMoon390:
     def loop_once(self):
         print('loop')
         self.__loop.run_until_complete(self.__coro)
+
+    def __on_message(self, message):
+        print(f'message: {message}')
+        assert(len(message) >= 5)
+        assert(message[0:1] == b'#')
+        # TODO: validate size?
+        response_code = message[3:5]
+        if response_code == b'A3':
+            self.__handle_status_response(message[5:])
+        else:
+            print(f'unknown response message type: {response_code}')
+
+    def __handle_status_response(self, parameters):
+        print('received status response')
+        assert(len(parameters) == 14)
+        print(f'  master volume = {parameters[0:4]}')
+        print(f'  balance       = {parameters[4:6]}')
+        print(f'  input         = {parameters[6:8]}')
+        print(f'  sample rate   = {parameters[8:10]}')
+        print(f'  unit state    = {parameters[10:12]}')
+        print(f'  mind state    = {parameters[12:14]}')
 
     def __send_command(self, command: bytes):
         header = b"#0"
