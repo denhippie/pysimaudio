@@ -52,12 +52,28 @@ class SimaudioMoon390:
         else:
             print(f'unknown response message type: {response_code}')
 
+    class Input(Enum):
+        aes = b'01'
+        optical = b'02'
+        spdif = b'03'
+        usb = b'04'
+        network = b'05'
+        bluetooth = b'06'
+        hdmi_1 = b'07'
+        hdmi_2 = b'08'
+        hdmi_3 = b'09'
+        hdmi_4 = b'0A'
+        hdmi_arc = b'0B'
+        analog = b'0C'
+        balanced = b'0D'
+        phono = b'0E'
+
     def __handle_status_response(self, parameters):
         print('received status response')
         assert(len(parameters) == 14)
         print(f'  master volume = {parameters[0:4]}')
         print(f'  balance       = {parameters[4:6]}')
-        print(f'  input         = {parameters[6:8]}')
+        print(f'  input         = {SimaudioMoon390.Input(parameters[6:8])}')
         print(f'  sample rate   = {parameters[8:10]}')
         print(f'  unit state    = {parameters[10:12]}')
         print(f'  mind state    = {parameters[12:14]}')
