@@ -99,6 +99,12 @@ class SimaudioMoon390:
         command = b"60" + state.value
         self.__send_command(command)
 
+    def volume_down(self):
+        self.__send_command(b"64010000")
+
+    def volume_up(self):
+        self.__send_command(b"64040000")
+
 
 if __name__ == '__main__':
     TCP_IP = '192.168.178.79'
