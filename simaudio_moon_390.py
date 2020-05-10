@@ -1,21 +1,41 @@
-import socket
+import asyncio
 import time
 from enum import Enum
 
-TCP_PORT = 50000
 BUFFER_SIZE = 4096
 
 
+class SimaudioConnection(asyncio.Protocol):
+    def __init__(self, loop):
+        self.loop = loop
+        self.transport = None
+
+    def connection_made(self, transport):
+        print('connection made')
+        self.transport = transport
+
+    def data_received(self, data):
+        print(f'data received: {data}')
+
+    def connection_lost(self, exc):
+        print('connection lost, stopping event loop')
+        self.loop.stop()
+
 class SimaudioMoon390:
     def __init__(self, ip: str):
-        self.ip = ip
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print(f"connecting to {self.ip}:{TCP_PORT}")
-        self.socket.connect((self.ip, TCP_PORT))
+        print(f"connecting to {ip}:50000")
+        self.__loop = asyncio.get_event_loop()
+        self.__connection = SimaudioConnection(self.__loop)
+        self.__coro = self.__loop.create_connection(lambda: self.__connection, ip, 50000)
+        self.loop_once()
 
     def __del__(self):
-        print("closing coneection")
-        self.socket.close()
+        print('closing coneection')
+        self.__loop.close()
+
+    def loop_once(self):
+        print('loop')
+        self.__loop.run_until_complete(self.__coro)
 
     def __send_command(self, command: bytes):
         header = b"#0"
@@ -23,14 +43,11 @@ class SimaudioMoon390:
         size = len(command)
         assert size < 10 # TODO: big commands not implemented yet
         message = header + str.encode(str(size)) + command + footer
-        print(f"sending command: {message}")
-        self.socket.send(message)
-        reply = self.socket.recv(BUFFER_SIZE)
-        print(f"received data: {reply}")
-        return reply
+        print(f'sending command: {message}')
+        self.__connection.transport.write(message)
 
     def get_status(self):
-        return self.__send_command(b"01")
+        self.__send_command(b"01")
 
     class PowerState(Enum):
         toggle = b"01"
@@ -39,14 +56,17 @@ class SimaudioMoon390:
 
     def set_power_state(self, state: PowerState):
         command = b"60" + state.value
-        return self.__send_command(command)
+        self.__send_command(command)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     TCP_IP = '192.168.178.79'
-    # MESSAGE = b"#046001\r"
     moon = SimaudioMoon390(TCP_IP)
+    time.sleep(1)
     while True:
         # moon.set_power_state(SimaudioMoon390.PowerState.toggle)
-        time.sleep(10)
         moon.get_status()
+        for i in range(9):
+            moon.loop_once()
+            time.sleep(1)
+
