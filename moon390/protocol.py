@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 
+from .exceptions import MoonProtocolError
+
 HEADER = 0x23  # '#'
 TERMINATOR = 0x0D  # CR
 DEFAULT_PORT = 50000
