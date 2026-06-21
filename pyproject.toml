@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moon390"
+version = "0.1.0"
+description = "Async control library for the Simaudio MOON Neo 390"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "flake8",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.setuptools.packages.find]
+include = ["moon390*"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+no_implicit_reexport = true
+show_error_codes = true
+pretty = true
+files = ["moon390"]
+
+# Tests and ad-hoc scripts are not held to the same bar as the library.
+[[tool.mypy.overrides]]
+module = ["tests.*", "manual_test"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
