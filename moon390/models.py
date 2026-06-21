@@ -99,7 +99,7 @@ class InputSetup:
 # --------------------------------------------------------------------------- #
 # Decoders
 # --------------------------------------------------------------------------- #
-def parse_status(params: bytes) -> dict:
+def parse_status(params: bytes) -> dict[str, object]:
     """Decode an A3 UNIT status payload, length-defensively.
 
     The spec disagrees on A3's size (NN=08 with 3 bytes vs NN=10 with 7). We
@@ -108,7 +108,7 @@ def parse_status(params: bytes) -> dict:
     sampleRate, state1, state2.
     """
     b = P.unhex_pairs(params)
-    out: dict = {}
+    out: dict[str, object] = {}
 
     if len(b) >= 2:
         out["volume_raw"] = b[0] * 256 + b[1]
@@ -175,10 +175,10 @@ def parse_input_setup(params: bytes) -> InputSetup:
     )
 
 
-def parse_product_info(params: bytes) -> dict:
+def parse_product_info(params: bytes) -> dict[str, object]:
     """Decode an A4 product-info payload: prodID + swRev + commRev."""
     b = P.unhex_pairs(params)
-    out: dict = {}
+    out: dict[str, object] = {}
     if len(b) >= 1:
         out["product_id"] = b[0]
     if len(b) >= 2:

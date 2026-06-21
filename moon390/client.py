@@ -41,7 +41,7 @@ class Moon390:
 
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
-        self._reader_task: asyncio.Task | None = None
+        self._reader_task: asyncio.Task[None] | None = None
         self._write_lock = asyncio.Lock()
         self._closing = False
 
@@ -104,7 +104,7 @@ class Moon390:
         await self.connect()
         return self
 
-    async def __aexit__(self, *exc) -> None:
+    async def __aexit__(self, *exc: object) -> None:
         await self.disconnect()
 
     async def _seed_state(self) -> None:
