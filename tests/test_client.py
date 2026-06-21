@@ -49,6 +49,42 @@ def test_track_time_push_sets_position():
     assert moon.state.media.position_s == 90
 
 
+def test_empty_track_time_resets_position():
+    """Track boundary pushes an empty B5 (prefix only) -> position clears."""
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.TRACK_PLAYING_TIME, b"M1:30"))
+    _feed(moon, P.build_frame(P.Resp.TRACK_PLAYING_TIME, b"M"))  # boundary
+    assert moon.state.media.position_s is None
+
+
+def test_stop_burst_clears_media_fields_to_none():
+    """End of playback pushes empty AF/B0/B1/B3 -> fields clear to None (not '')."""
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.SONG_NAME, b"MO Pato"))
+    _feed(moon, P.build_frame(P.Resp.ARTIST_NAME, b"MJoao"))
+    assert moon.state.media.title == "O Pato"
+    for code in (P.Resp.ALBUM_NAME, P.Resp.ARTIST_NAME, P.Resp.SONG_NAME, P.Resp.ALBUM_ART_URL):
+        _feed(moon, P.build_frame(code, b"M"))  # empty payload
+    assert moon.state.media.title is None
+    assert moon.state.media.artist is None
+    assert moon.state.media.album is None
+    assert moon.state.media.image_url is None
+
+
+def test_media_text_decodes_utf8():
+    """AF-B5 text is UTF-8 (real capture: b'MJo\\xc3\\xa3o Gilberto')."""
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.ARTIST_NAME, b"MJo\xc3\xa3o Gilberto"))
+    assert moon.state.media.artist == "João Gilberto"
+
+
+def test_album_art_url_push():
+    moon = Moon390("test")
+    url = "http://192.168.2.19:80/file/stream//tmp/temp_data_roonAlbum_abc"
+    _feed(moon, P.build_frame(P.Resp.ALBUM_ART_URL, b"M" + url.encode("ascii")))
+    assert moon.state.media.image_url == url
+
+
 def test_input_setup_populates_inputs():
     moon = Moon390("test")
     # Literal-ASCII label + real NUL terminator + trailer.
@@ -70,6 +106,22 @@ def test_unknown_frame_ignored():
     moon = Moon390("test")
     _feed(moon, b"#04FF00\r")  # unknown code 0xFF
     # no exception == pass
+
+
+def test_request_media_info_sends_correct_source():
+    import asyncio
+
+    moon = Moon390("test")
+    sent: list[bytes] = []
+
+    async def capture(frame: bytes) -> None:
+        sent.append(frame)
+
+    moon.send = capture  # type: ignore[method-assign]
+    asyncio.run(moon.request_media_info())
+    asyncio.run(moon.request_media_info(bluetooth=True))
+    assert sent[0] == P.build_command(P.Cmd.REQUEST_MEDIA_INFO, 0x06)  # MiND
+    assert sent[1] == P.build_command(P.Cmd.REQUEST_MEDIA_INFO, 0x07)  # Bluetooth
 
 
 def test_harness_printer_runs():

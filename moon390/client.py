@@ -219,9 +219,12 @@ class Moon390:
 
     def _on_media_text(self, frame: P.Frame) -> bool:
         tag, text = models.parse_media_text(frame.params)
-        setattr(self.state.media, self._MEDIA_TEXT_FIELDS[frame.code], text)
+        # Empty payload clears the field: the unit pushes an all-empty media
+        # burst when playback stops (end of album), so '' must become None.
+        setattr(self.state.media, self._MEDIA_TEXT_FIELDS[frame.code], text or None)
         if frame.code == P.Resp.SONG_NAME:
-            # Only SONG_NAME carries the source tag ('M' MiND / 'B' Bluetooth).
+            # NOTE: this prefix is an unreliable source tag (see PROTOCOL_NOTES);
+            # candidate for removal when the HA source comes from A3 input_id.
             self.state.media.source_tag = tag
         return True
 
@@ -338,3 +341,11 @@ class Moon390:
 
     async def previous_track(self) -> None:
         await self.send(P.build_command(P.Cmd.PREVIOUS))
+
+    async def request_media_info(self, *, bluetooth: bool = False) -> None:
+        """Ask the unit to (re)send the now-playing AF..B5 media stream.
+
+        Source param per 0x6E: 0x06 = MiND, 0x07 = Bluetooth.
+        """
+        source = 0x07 if bluetooth else 0x06
+        await self.send(P.build_command(P.Cmd.REQUEST_MEDIA_INFO, source))

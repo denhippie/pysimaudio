@@ -143,28 +143,30 @@ def parse_input_setup(params: bytes) -> InputSetup:
     """Decode an A7 input-setup payload (best-effort, never raises).
 
     HARDWARE FINDING 2026-06-21 (confirmed via raw hex):
-        A7 payload = id(2 hex ASCII) + label(literal ASCII)
-    The label is literal ASCII (e.g. b"ANALOG"), NOT hex pairs. There is NO NUL
+        A7 payload = id(2 hex chars) + label(literal text)
+    The label is literal text (e.g. b"ANALOG"), NOT hex pairs. There is NO NUL
     terminator and NO trailer on this firmware -- the frame simply ends at the
     next '#'. Crucially there is therefore **no enabled/offset/bypass field**:
     A7 cannot tell us whether an input is enabled (see source_list design notes).
 
-    A NUL is still honoured if a future firmware emits one, but `enabled` defaults
-    to True because the wire gives us nothing to say otherwise.
+    The label is decoded as UTF-8 (the unit uses UTF-8 for text -- see
+    parse_media_text), so a custom label with accented characters survives. A NUL
+    is still honoured if a future firmware emits one, but `enabled` defaults to
+    True because the wire gives us nothing to say otherwise.
     """
     if len(params) < 2:
         return InputSetup(input_id=0, label="", enabled=True)
 
     try:
-        input_id = int(params[0:2].decode("ascii"), 16)
+        input_id = int(params[0:2].decode("ascii"), 16)  # id is ASCII hex
     except ValueError:
         return InputSetup(
-            input_id=0, label=params.decode("ascii", "replace"), enabled=True
+            input_id=0, label=params.decode("utf-8", "replace"), enabled=True
         )
 
     rest = params[2:]
     nul = rest.find(0x00)
-    label = (rest if nul == -1 else rest[:nul]).decode("ascii", "replace")
+    label = (rest if nul == -1 else rest[:nul]).decode("utf-8", "replace")
 
     return InputSetup(
         input_id=input_id,
@@ -191,17 +193,19 @@ def parse_product_info(params: bytes) -> dict[str, object]:
 def parse_media_text(params: bytes) -> tuple[str | None, str]:
     """Decode a media text push (AF/B0/B1/B2/B3/B4/B5).
 
-    These are NOT hex-encoded: a 1-char source prefix ('M'/'B') followed by the
-    literal ASCII text. Returns (source_tag, text).
+    These are NOT hex-encoded: a 1-byte prefix ('M'/'B') followed by the literal
+    text. The text is UTF-8 (HARDWARE FINDING 2026-06-21: artist "João Gilberto"
+    arrives as b'Jo\\xc3\\xa3o Gilberto'). The prefix is a delimiter, not a
+    reliable source tag (see PROTOCOL_NOTES.md). Returns (prefix, text).
     """
     if not params:
         return None, ""
     tag = chr(params[0])
-    text = params[1:].decode("ascii", errors="replace")
+    text = params[1:].decode("utf-8", errors="replace")
     if tag in ("M", "B"):
         return tag, text
     # No recognised prefix -- treat the whole thing as text.
-    return None, params.decode("ascii", errors="replace")
+    return None, params.decode("utf-8", errors="replace")
 
 
 def parse_track_time(text: str) -> int | None:

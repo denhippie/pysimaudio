@@ -52,7 +52,9 @@ In practice: `NN = 2 (code) + len(params)`.
   Upper- and lower-case both accepted (`0x30-0x39`, `0x41-0x46`, `0x61-0x66`).
 - **BOOLEAN**: a single ASCII char `'0'` or `'1'`.
 - **ASCII**: single printable char.
-- **ASCII STR**: NULL-terminated printable string (the NULL `0x00` counts as a byte).
+- **ASCII STR**: a printable string. Despite the spec's name, the wire encoding is **UTF-8**
+  in practice (confirmed for AF–B5 media text; assume the same for A7 input labels). NULL
+  termination is spec'd but NOT emitted by this firmware for A7 (see the A7 finding above).
 
 ### Worked examples (from doc)
 - `#021F<CR>` → command `0x1F`, no params. `NN="02"` = len("1F")=2. ✓
@@ -228,13 +230,34 @@ All take no params (`NN=02`) unless noted.
 | A9   | Factory defaults loaded      | 02   | none. |
 | AA   | Wake-up                      | 02   | sent once at startup and after Reset. |
 | AD   | CD setup                     | 04   | id: 01 AES, 04 SPDIF, 0C BAL, 0D ANALOG. |
-| AF   | Song name                    | var  | prefix 'M'/'B' + ASCII text. |
-| B0   | Artist name                  | var  | prefix 'M'/'B' + ASCII text. |
-| B1   | Album name                   | var  | prefix 'M'/'B' + ASCII text. |
-| B2   | Genre name                   | var  | prefix 'M'/'B' + ASCII text. |
-| B3   | Album art URL                | var  | prefix 'M'/'B' + ASCII URL. (URL only for MiND in practice.) |
-| B4   | Total track time             | var  | prefix 'M'/'B' + e.g. "3:45". |
-| B5   | Track playing time           | var  | prefix 'M'/'B' + e.g. "3:45". Pushed every second while playing. |
+| AF   | Song name                    | var  | 1-byte prefix + UTF-8 text. **[FINDING: prefix is a delimiter, not a source tag; text is UTF-8 — see below]** |
+| B0   | Artist name                  | var  | 1-byte prefix + UTF-8 text. |
+| B1   | Album name                   | var  | 1-byte prefix + UTF-8 text. |
+| B2   | Genre name                   | var  | 1-byte prefix + UTF-8 text. |
+| B3   | Album art URL                | var  | 1-byte prefix + UTF-8 URL. (URL only for MiND in practice.) |
+| B4   | Total track time             | var  | 1-byte prefix + e.g. "9:10". Empty payload (prefix only) at track boundary. |
+| B5   | Track playing time           | var  | 1-byte prefix + e.g. "0:01". Pushed ~1/s while playing; empty (prefix only) resets on track change. |
+
+**[HARDWARE FINDING 2026-06-21 — media metadata, Roon] (confirmed via raw capture):**
+- The 1-byte prefix on AF–B5 is **not a reliable source indicator**. In one Roon session,
+  `SONG_NAME` arrived prefixed `'B'` while `TRACK_PLAYING_TIME` arrived prefixed `'M'`. Treat it
+  purely as a delimiter to strip; derive the active source from A3 `input_id` instead.
+- **`0x6E` (Request media info) is unreliable and should not be used.** It queries the unit's
+  *internal* MiND streamer, which sits idle while Roon drives playback over RAAT, so it returns
+  placeholder text (`"Media Info"` / `"Not Available"` / empty). The real now-playing data comes
+  from the **unsolicited feedback stream** (§8), which DOES reflect Roon playback correctly.
+- Confirmed-present over Roon: AF song, **B0 artist, B1 album, B3 album-art URL**, B4 total
+  time, B5 playing time (live position). A full now-playing card is available. Same-album track
+  change pushes: empty B5 (reset) → B4 total → AF song → B5 restart. A new-album change also
+  pushes B0 artist, B1 album, and a B3 art URL.
+- **Text is UTF-8, not ASCII.** Artist "João Gilberto" arrives as `b'MJo\xc3\xa3o Gilberto'`.
+  Decode AF–B5 payloads as UTF-8 (`errors="replace"`). Decoding as ASCII produces mojibake.
+- B3 album-art URL points at the unit's own HTTP server, e.g.
+  `http://<unit-ip>:80/file/stream//tmp/temp_data_roonAlbum_<hash>` — directly usable by HA.
+- **Playback stop (end of album) pushes an all-empty media burst:** empty B5 (×2), then
+  empty B1/B0/AF/B3 (album/artist/song/art). Treat an empty payload as "clear this field"
+  (→ `None`). NOTE: B4 total time is NOT re-sent empty, so `duration_s` lingers stale after
+  stop — HA should null it out when transport state is idle/stopped.
 | FE   | Expanded product info        | 24   | see layout below. |
 
 ### Error codes (A1 param2)

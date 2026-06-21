@@ -3,7 +3,7 @@
 Specs: https://simaudio.com/wp-content/uploads/2019/11/MOON_390_IP_IR-Codes_rev1.pdf
 
 Async Python library for controlling a **Simaudio MOON Neo 390** preamp/DAC/streamer
-over its IP control protocol (raw ASCII over TCP, port 50000). The end goal is a clean
+over its IP control protocol (ASCII-framed, UTF-8 text fields, over TCP port 50000). The end goal is a clean
 Home Assistant `media_player` integration; this repo currently contains the standalone
 protocol/transport library it will be built on.
 
@@ -70,7 +70,7 @@ The vendor PDF has several self-contradictions; these were settled on hardware:
   unreliable — A7 input-setup frames stream back-to-back with no CR and a fixed bogus
   `NN=0E`. `iter_frames` splits on `#`/CR (neither byte can appear in a hex payload).
 - **A3 status** = `NN=10`, 7 one-byte fields; parsed length-defensively.
-- **A7 input setup** = `id + literal-ASCII label`, nothing else — **no enabled flag**, no
+- **A7 input setup** = `id + literal label (UTF-8)`, nothing else — **no enabled flag**, no
   NUL, no trailer. The device therefore cannot report which inputs are enabled.
 - **Input selection (`0x63`) uses a single scheme (Scheme A).** The PDF's "Scheme B"
   BALANCED/ANALOG swap does not exist; `0x0C`→BALANCED, `0x0D`→ANALOG, same as everywhere.

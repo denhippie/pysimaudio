@@ -207,13 +207,21 @@ def test_select_input_unknown_name():
 # A7 input setup -- label NULL-termination (8 vs 12 char ambiguity)
 # --------------------------------------------------------------------------- #
 def test_input_setup_literal_ascii_label():
-    # HARDWARE: label is LITERAL ASCII, NUL-terminated (not hex pairs).
+    # HARDWARE: label is LITERAL text, NUL-terminated (not hex pairs).
     # id=0B, label "TV", NUL, then trailer (hex, format TBD).
     params = b"0B" + b"TV" + b"\x00" + b"640001"
     setup = models.parse_input_setup(params)
     assert setup.input_id == 0x0B
     assert setup.label == "TV"
     assert setup.display_name == "TV"
+
+
+def test_input_setup_label_is_utf8():
+    # Labels are UTF-8 (same as media text): a custom "Câble" must not mojibake.
+    params = b"0B" + b"C\xc3\xa2ble"
+    setup = models.parse_input_setup(params)
+    assert setup.input_id == 0x0B
+    assert setup.label == "Câble"
 
 
 def test_input_setup_real_world_blob_does_not_crash():

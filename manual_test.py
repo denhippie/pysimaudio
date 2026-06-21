@@ -164,6 +164,39 @@ async def probe_input_scheme(moon: Moon390):
     print()
 
 
+async def probe_media_info(moon: Moon390):
+    """Capture the AF..B5 now-playing stream.
+
+    Verifies the open questions in PROTOCOL_NOTES.md §media: the 'M'/'B' prefix,
+    the B4/B5 track-time string format, whether B3 album-art URL appears, and the
+    B5 (playing time) push cadence.
+    """
+    print(DIVIDER)
+    print("PROBE: media info. START PLAYING A TRACK on MiND or Bluetooth FIRST,")
+    print("then choose the source. We request 0x6E and print every AF..B5 frame;")
+    print("B5 (playing time) should tick about once a second while playing.\n")
+    src = (await ainput("  >> source [m=MiND / b=Bluetooth] (default m): ")).strip().lower()
+    bluetooth = src.startswith("b")
+
+    detach = attach_printer(moon)
+    await moon.request_media_info(bluetooth=bluetooth)
+    print("  (requested; capturing for 12s)\n")
+    await asyncio.sleep(12.0)
+    detach()
+
+    m = moon.state.media
+    print(
+        "\nAssembled MediaInfo (what HA would see):\n"
+        f"  source_tag={m.source_tag!r}\n"
+        f"  title={m.title!r}\n"
+        f"  artist={m.artist!r}\n"
+        f"  album={m.album!r}\n"
+        f"  genre={m.genre!r}\n"
+        f"  image_url={m.image_url!r}\n"
+        f"  duration_s={m.duration_s}  position_s={m.position_s}\n"
+    )
+
+
 async def cmd_mute(moon: Moon390):
     detach = attach_printer(moon)
     print("Toggling mute...")
@@ -232,8 +265,7 @@ async def cmd_raw(moon: Moon390):
     if not line:
         return
     code = int(line[0], 16)
-    params = bytes.fromhex(line[1]) if len(line) > 1 else b""
-    # interpret param as already-ASCII-hex if it looks like it, else encode bytes
+    # Param is passed through as literal ASCII (build_frame hex-wraps as needed).
     frame = P.build_frame(code, line[1].encode() if len(line) > 1 else b"")
     print(f"  sending: {frame!r}")
     detach = attach_printer(moon)
@@ -255,6 +287,7 @@ MENU = """
   -- ambiguity probes (verify against hardware) --
   a  A3 status length        (NN 08 vs 10)
   b  0x63 BALANCED/ANALOG     (Scheme A vs B)
+  c  Media info stream        (AF..B5 -- play music first)
 
   q  quit
 ================================================================
@@ -269,6 +302,7 @@ ACTIONS = {
     "6": cmd_raw,
     "a": probe_a3_length,
     "b": probe_input_scheme,
+    "c": probe_media_info,
 }
 
 
