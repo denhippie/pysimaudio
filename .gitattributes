@@ -1,0 +1,23 @@
+# Normalize line endings: store everything as LF in the repo, and check out
+# LF in working trees too (so the CRLF-conversion warnings on Windows stop).
+* text=auto eol=lf
+
+# Explicitly treat common text types as text.
+*.py    text
+*.toml  text
+*.md    text
+*.txt   text
+*.cfg   text
+*.ini   text
+*.yml   text
+*.yaml  text
+*.json  text
+
+# Binary files: never touch their bytes.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
