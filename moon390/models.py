@@ -18,7 +18,6 @@ class MediaInfo:
     image_url: str | None = None
     duration_s: int | None = None
     position_s: int | None = None
-    source_tag: str | None = None  # 'M' (MiND) or 'B' (Bluetooth)
 
 
 @dataclass

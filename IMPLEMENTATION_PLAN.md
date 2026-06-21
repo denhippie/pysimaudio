@@ -52,7 +52,6 @@ class MediaInfo:
     image_url: str|None
     duration_s: int|None          # parsed from "M:SS"
     position_s: int|None          # from B5
-    source_tag: str|None          # 'M' (MiND) / 'B' (Bluetooth)
 
 @dataclass
 class MoonState:

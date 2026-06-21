@@ -165,29 +165,27 @@ async def probe_input_scheme(moon: Moon390):
 
 
 async def probe_media_info(moon: Moon390):
-    """Capture the AF..B5 now-playing stream.
+    """Capture the AF..B5 now-playing stream from the unit's feedback pushes.
 
-    Verifies the open questions in PROTOCOL_NOTES.md §media: the 'M'/'B' prefix,
-    the B4/B5 track-time string format, whether B3 album-art URL appears, and the
-    B5 (playing time) push cadence.
+    Verifies PROTOCOL_NOTES.md §media: B4/B5 track-time format, whether B3
+    album-art URL appears, UTF-8 text, and the B5 (playing time) cadence.
+
+    We deliberately do NOT send 0x6E -- it queries the idle internal streamer and
+    returns placeholders during Roon/RAAT playback. The feedback stream (ON by
+    default) is the source of truth, so just play/skip a track and watch.
     """
     print(DIVIDER)
-    print("PROBE: media info. START PLAYING A TRACK on MiND or Bluetooth FIRST,")
-    print("then choose the source. We request 0x6E and print every AF..B5 frame;")
-    print("B5 (playing time) should tick about once a second while playing.\n")
-    src = (await ainput("  >> source [m=MiND / b=Bluetooth] (default m): ")).strip().lower()
-    bluetooth = src.startswith("b")
+    print("PROBE: media info (passive). Make sure something is PLAYING, then")
+    print("SKIP A TRACK during the window so the unit pushes fresh AF..B5 frames.")
+    print("B5 (playing time) should tick about once a second. Capturing for 15s.\n")
 
     detach = attach_printer(moon)
-    await moon.request_media_info(bluetooth=bluetooth)
-    print("  (requested; capturing for 12s)\n")
-    await asyncio.sleep(12.0)
+    await asyncio.sleep(15.0)
     detach()
 
     m = moon.state.media
     print(
         "\nAssembled MediaInfo (what HA would see):\n"
-        f"  source_tag={m.source_tag!r}\n"
         f"  title={m.title!r}\n"
         f"  artist={m.artist!r}\n"
         f"  album={m.album!r}\n"

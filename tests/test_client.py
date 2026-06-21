@@ -40,7 +40,6 @@ def test_media_text_pushes():
     frame = P.build_frame(P.Resp.SONG_NAME, song)
     _feed(moon, frame)
     assert moon.state.media.title == "Test Song"
-    assert moon.state.media.source_tag == "M"
 
 
 def test_track_time_push_sets_position():
@@ -106,22 +105,6 @@ def test_unknown_frame_ignored():
     moon = Moon390("test")
     _feed(moon, b"#04FF00\r")  # unknown code 0xFF
     # no exception == pass
-
-
-def test_request_media_info_sends_correct_source():
-    import asyncio
-
-    moon = Moon390("test")
-    sent: list[bytes] = []
-
-    async def capture(frame: bytes) -> None:
-        sent.append(frame)
-
-    moon.send = capture  # type: ignore[method-assign]
-    asyncio.run(moon.request_media_info())
-    asyncio.run(moon.request_media_info(bluetooth=True))
-    assert sent[0] == P.build_command(P.Cmd.REQUEST_MEDIA_INFO, 0x06)  # MiND
-    assert sent[1] == P.build_command(P.Cmd.REQUEST_MEDIA_INFO, 0x07)  # Bluetooth
 
 
 def test_harness_printer_runs():
