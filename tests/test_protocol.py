@@ -17,7 +17,7 @@ from moon390 import models, protocol as P  # noqa: E402
 # --------------------------------------------------------------------------- #
 # build_frame / NN computation
 # --------------------------------------------------------------------------- #
-def test_worked_examples_from_doc():
+def test_worked_examples_from_doc() -> None:
     # #021F  -> command 0x1F, no params, NN=02
     assert P.build_frame(0x1F) == b"#021F\r"
     # #041801 -> command 0x18, param 0x01, NN=04
@@ -28,12 +28,12 @@ def test_worked_examples_from_doc():
     assert P.build_frame(0x20, b"0311") == b"#06200311\r"
 
 
-def test_build_command_hex_params():
+def test_build_command_hex_params() -> None:
     # Volume set to 80.0 == 800 == 0x0320 -> MSB 03, LSB 20
     assert P.build_command(0x64, 0x07, 0x03, 0x20) == b"#0864070320\r"
 
 
-def test_nn_is_computed_for_ascii_label():
+def test_nn_is_computed_for_ascii_label() -> None:
     # 0x23 set-label, id 0x02, label "ANDRMEDA" + NULL.
     label = b"".join(P.hexbyte(ord(c)) for c in "ANDRMEDA") + b"00"
     frame = P.build_frame(0x23, P.hexbyte(0x02) + label)
@@ -45,7 +45,7 @@ def test_nn_is_computed_for_ascii_label():
     assert nn == len(frame) - 4  # minus '#', NN(2), CR
 
 
-def test_volume_too_long_or_out_of_range():
+def test_volume_too_long_or_out_of_range() -> None:
     try:
         P.encode_volume_raw(801)
         assert False, "expected ValueError"
@@ -56,7 +56,7 @@ def test_volume_too_long_or_out_of_range():
 # --------------------------------------------------------------------------- #
 # Hex helpers
 # --------------------------------------------------------------------------- #
-def test_hex_helpers_roundtrip_and_case():
+def test_hex_helpers_roundtrip_and_case() -> None:
     assert P.hexbyte(0x1F) == b"1F"
     assert P.unhex(b"1f") == 0x1F  # lower-case accepted
     assert P.unhex(b"1F") == 0x1F
@@ -66,7 +66,7 @@ def test_hex_helpers_roundtrip_and_case():
 # --------------------------------------------------------------------------- #
 # iter_frames -- streaming splitter
 # --------------------------------------------------------------------------- #
-def test_iter_single_frame():
+def test_iter_single_frame() -> None:
     buf = bytearray(b"#021F\r")
     frames = P.iter_frames(buf)
     assert len(frames) == 1
@@ -75,13 +75,13 @@ def test_iter_single_frame():
     assert buf == b""  # fully consumed
 
 
-def test_iter_back_to_back_frames():
+def test_iter_back_to_back_frames() -> None:
     buf = bytearray(b"#0864070320\r#021F\r")
     frames = P.iter_frames(buf)
     assert [f.code for f in frames] == [0x64, 0x1F]
 
 
-def test_iter_partial_read_leaves_tail():
+def test_iter_partial_read_leaves_tail() -> None:
     buf = bytearray(b"#0864070320\r#02")  # second frame incomplete
     frames = P.iter_frames(buf)
     assert [f.code for f in frames] == [0x64]
@@ -93,13 +93,13 @@ def test_iter_partial_read_leaves_tail():
     assert buf == b""
 
 
-def test_iter_strips_leading_junk():
+def test_iter_strips_leading_junk() -> None:
     buf = bytearray(b"garbage\x00#021F\r")
     frames = P.iter_frames(buf)
     assert [f.code for f in frames] == [0x1F]
 
 
-def test_iter_real_a7_burst_from_hardware():
+def test_iter_real_a7_burst_from_hardware() -> None:
     # The EXACT bytes captured from a 390: #0EA70DANALOG#0EA70EPHONO
     # NN=0E is bogus/fixed; frames are delimited by the next '#'. The final
     # frame (PHONO) has no following delimiter so it stays buffered.
@@ -119,7 +119,7 @@ def test_iter_real_a7_burst_from_hardware():
     assert models.parse_input_setup(frames[0].params).label == "PHONO"
 
 
-def test_iter_a7_followed_by_cr_terminated_frame():
+def test_iter_a7_followed_by_cr_terminated_frame() -> None:
     # A7 burst then a normal CR-terminated frame -> all flush.
     buf = bytearray(b"#0EA70DANALOG#0EA70EPHONO#021F\r")
     frames = P.iter_frames(buf)
@@ -132,7 +132,7 @@ def test_iter_a7_followed_by_cr_terminated_frame():
     assert any(f.code == 0x1F for f in frames)
 
 
-def test_iter_partial_a7_then_more():
+def test_iter_partial_a7_then_more() -> None:
     buf = bytearray(b"#0EA70DANA")  # label mid-stream, no delimiter yet
     assert P.iter_frames(buf) == []  # nothing emitted; waiting
     buf.extend(b"LOG#0EA70EPHONO\r")
@@ -144,7 +144,7 @@ def test_iter_partial_a7_then_more():
 # --------------------------------------------------------------------------- #
 # A3 status -- length-defensive (NN=08 vs NN=10 inconsistency)
 # --------------------------------------------------------------------------- #
-def test_status_full_seven_fields():
+def test_status_full_seven_fields() -> None:
     # vol=800(0320), bal=64(center), input=05(MiND), sr=01(44.1),
     # state1=0x05 (ON + DAC locked), state2=0x02 (repeat all)
     params = b"032064" + b"05" + b"01" + b"05" + b"02"
@@ -160,7 +160,7 @@ def test_status_full_seven_fields():
     assert out["shuffle"] is False
 
 
-def test_status_short_three_bytes_does_not_crash():
+def test_status_short_three_bytes_does_not_crash() -> None:
     # The stale NN=08 variant: only 3 bytes present.
     params = b"032064"
     out = models.parse_status(params)
@@ -169,7 +169,7 @@ def test_status_short_three_bytes_does_not_crash():
     assert "input_id" not in out  # nothing fabricated beyond what's present
 
 
-def test_status_state_bits():
+def test_status_state_bits() -> None:
     params = b"000000" + b"00" + b"00" + b"0A" + b"05"
     # state1=0x0A -> mute(b1) + display_off(b3); state2=0x05 -> repeat-one + shuffle
     out = models.parse_status(params)
@@ -183,7 +183,7 @@ def test_status_state_bits():
 # --------------------------------------------------------------------------- #
 # Input scheme A/B trap
 # --------------------------------------------------------------------------- #
-def test_select_input_single_scheme_no_swap():
+def test_select_input_single_scheme_no_swap() -> None:
     # HARDWARE 2026-06-21: 0x63 uses Scheme A exactly -- NO BALANCED/ANALOG swap.
     assert P.INPUTS_SCHEME_A[0x0C] == "BALANCED"
     assert P.INPUTS_SCHEME_A[0x0D] == "ANALOG"
@@ -195,7 +195,7 @@ def test_select_input_single_scheme_no_swap():
     assert not hasattr(P, "INPUTS_SCHEME_B")
 
 
-def test_select_input_unknown_name():
+def test_select_input_unknown_name() -> None:
     try:
         P.select_input_id("NOPE")
         assert False, "expected ValueError"
@@ -206,7 +206,7 @@ def test_select_input_unknown_name():
 # --------------------------------------------------------------------------- #
 # A7 input setup -- label NULL-termination (8 vs 12 char ambiguity)
 # --------------------------------------------------------------------------- #
-def test_input_setup_literal_ascii_label():
+def test_input_setup_literal_ascii_label() -> None:
     # HARDWARE: label is LITERAL text, NUL-terminated (not hex pairs).
     # id=0B, label "TV", NUL, then trailer (hex, format TBD).
     params = b"0B" + b"TV" + b"\x00" + b"640001"
@@ -216,7 +216,7 @@ def test_input_setup_literal_ascii_label():
     assert setup.display_name == "TV"
 
 
-def test_input_setup_label_is_utf8():
+def test_input_setup_label_is_utf8() -> None:
     # Labels are UTF-8 (same as media text): a custom "Câble" must not mojibake.
     params = b"0B" + b"C\xc3\xa2ble"
     setup = models.parse_input_setup(params)
@@ -224,7 +224,7 @@ def test_input_setup_label_is_utf8():
     assert setup.label == "Câble"
 
 
-def test_input_setup_real_world_blob_does_not_crash():
+def test_input_setup_real_world_blob_does_not_crash() -> None:
     # The exact param blob that crashed the old hex-pair parser. Must not raise;
     # id and literal label parse out, trailing junk is tolerated.
     params = b"01AES-EBU#0EA702OPTICAL 1A001"
@@ -233,14 +233,14 @@ def test_input_setup_real_world_blob_does_not_crash():
     assert setup.label.startswith("AES-EBU")
 
 
-def test_input_setup_no_nul_does_not_crash():
+def test_input_setup_no_nul_does_not_crash() -> None:
     params = b"06BLUETOOTHA001"
     setup = models.parse_input_setup(params)
     assert setup.input_id == 0x06
     assert "BLUETOOTH" in setup.label
 
 
-def test_input_setup_empty_label_falls_back_to_scheme_a():
+def test_input_setup_empty_label_falls_back_to_scheme_a() -> None:
     params = b"03" + b"\x00" + b"640001"
     setup = models.parse_input_setup(params)
     assert setup.label == ""
@@ -250,14 +250,14 @@ def test_input_setup_empty_label_falls_back_to_scheme_a():
 # --------------------------------------------------------------------------- #
 # Volume / level conversions
 # --------------------------------------------------------------------------- #
-def test_volume_encoding():
+def test_volume_encoding() -> None:
     assert P.encode_volume_raw(800) == (0x03, 0x20)
     assert P.encode_volume_raw(0) == (0x00, 0x00)
     assert P.encode_volume_raw(255) == (0x00, 0xFF)
     assert P.encode_volume_raw(256) == (0x01, 0x00)
 
 
-def test_level_to_raw_clamps():
+def test_level_to_raw_clamps() -> None:
     assert P.level_to_raw(0.0) == 0
     assert P.level_to_raw(1.0) == 800
     assert P.level_to_raw(0.5) == 400
@@ -268,13 +268,13 @@ def test_level_to_raw_clamps():
 # --------------------------------------------------------------------------- #
 # Media text + track time
 # --------------------------------------------------------------------------- #
-def test_media_text_prefix():
+def test_media_text_prefix() -> None:
     tag, text = models.parse_media_text(b"M" + b"Bohemian Rhapsody")
     assert tag == "M"
     assert text == "Bohemian Rhapsody"
 
 
-def test_track_time_parsing():
+def test_track_time_parsing() -> None:
     assert models.parse_track_time("3:45") == 225
     assert models.parse_track_time("1:02:03") == 3723
     assert models.parse_track_time("") is None
@@ -284,13 +284,13 @@ def test_track_time_parsing():
 # --------------------------------------------------------------------------- #
 # MoonState convenience
 # --------------------------------------------------------------------------- #
-def test_state_volume_conversions():
+def test_state_volume_conversions() -> None:
     s = models.MoonState(volume_raw=400)
     assert s.volume_db == 40.0
     assert s.volume_level == 0.5
 
 
-def test_source_list_fallback_and_a7():
+def test_source_list_fallback_and_a7() -> None:
     s = models.MoonState()
     # No A7 data -> full Scheme A list.
     assert "MiND" in s.source_list()

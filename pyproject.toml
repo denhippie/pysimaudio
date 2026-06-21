@@ -32,13 +32,7 @@ disallow_any_generics = true
 no_implicit_reexport = true
 show_error_codes = true
 pretty = true
-files = ["moon390"]
-
-# Tests and ad-hoc scripts are not held to the same bar as the library.
-[[tool.mypy.overrides]]
-module = ["tests.*", "manual_test"]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
+files = ["moon390", "tests", "manual_test.py"]
 
 [tool.ruff]
 line-length = 120

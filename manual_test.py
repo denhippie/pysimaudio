@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Awaitable, Callable
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -42,11 +43,12 @@ def describe_frame(frame: P.Frame) -> str:
         if code == P.Resp.STATUS:
             st = models.parse_status(frame.params)
             nn = len(frame.params) + 2  # +2 for the code itself
+            iid = st.get("input_id")
+            iname = P.INPUTS_SCHEME_A.get(iid, "?") if isinstance(iid, int) else "?"
             detail = (
                 f"NN(observed)={nn:#04x} bytes={len(frame.params)//2} "
                 f"vol={st.get('volume_raw')} "
-                f"input={st.get('input_id')}"
-                f"({P.INPUTS_SCHEME_A.get(st.get('input_id', -1), '?')}) "
+                f"input={iid}({iname}) "
                 f"sr={st.get('sample_rate')} pwr={st.get('powered')} "
                 f"mute={st.get('muted')} rpt={st.get('repeat')} shf={st.get('shuffle')}"
             )
@@ -84,7 +86,7 @@ def describe_frame(frame: P.Frame) -> str:
     return f"<- {name:<18} raw={frame.params!r}  {detail}"
 
 
-def attach_printer(moon: Moon390):
+def attach_printer(moon: Moon390) -> Callable[[], None]:
     return moon.add_raw_listener(lambda f: print(describe_frame(f)))
 
 
@@ -100,7 +102,7 @@ async def confirm(question: str) -> bool:
 # --------------------------------------------------------------------------- #
 # Individual checks
 # --------------------------------------------------------------------------- #
-async def listen_mode(moon: Moon390):
+async def listen_mode(moon: Moon390) -> None:
     print(DIVIDER)
     print("LISTEN MODE: now go press buttons / turn the volume knob / change input")
     print("on the unit (or its remote). Every pushed frame is printed below.")
@@ -111,7 +113,7 @@ async def listen_mode(moon: Moon390):
     print("(stopped listening)\n")
 
 
-async def snapshot(moon: Moon390):
+async def snapshot(moon: Moon390) -> None:
     print(DIVIDER)
     print("Requesting A3 status (watch the raw bytes + observed NN)...")
     detach = attach_printer(moon)
@@ -126,7 +128,7 @@ async def snapshot(moon: Moon390):
     )
 
 
-async def probe_a3_length(moon: Moon390):
+async def probe_a3_length(moon: Moon390) -> None:
     """Ambiguity #1: is A3's NN 0x08 (3 bytes) or 0x10 (7 bytes)?"""
     print(DIVIDER)
     print("PROBE: A3 status length (doc says both NN=08 and NN=10).")
@@ -147,7 +149,7 @@ async def probe_a3_length(moon: Moon390):
     print(f"  => This unit uses the {'7-field (NN=10)' if nbytes >= 7 else '3-field (NN=08)'} layout.\n")
 
 
-async def probe_input_scheme(moon: Moon390):
+async def probe_input_scheme(moon: Moon390) -> None:
     """Ambiguity #2: does 0x63 use Scheme A or B for BALANCED/ANALOG (0C/0D)?"""
     print(DIVIDER)
     print("PROBE: 0x63 BALANCED/ANALOG scheme. We'll send raw id 0x0C, then 0x0D,")
@@ -164,7 +166,7 @@ async def probe_input_scheme(moon: Moon390):
     print()
 
 
-async def probe_media_info(moon: Moon390):
+async def probe_media_info(moon: Moon390) -> None:
     """Capture the AF..B5 now-playing stream from the unit's feedback pushes.
 
     Verifies PROTOCOL_NOTES.md §media: B4/B5 track-time format, whether B3
@@ -195,7 +197,7 @@ async def probe_media_info(moon: Moon390):
     )
 
 
-async def cmd_mute(moon: Moon390):
+async def cmd_mute(moon: Moon390) -> None:
     detach = attach_printer(moon)
     print("Toggling mute...")
     await moon.toggle_mute()
@@ -205,7 +207,7 @@ async def cmd_mute(moon: Moon390):
     print()
 
 
-async def cmd_volume(moon: Moon390):
+async def cmd_volume(moon: Moon390) -> None:
     val = (await ainput("  >> set volume dB (0-80), or +/- to nudge 0.5dB: ")).strip()
     detach = attach_printer(moon)
     if val == "+":
@@ -225,7 +227,7 @@ async def cmd_volume(moon: Moon390):
     print()
 
 
-async def cmd_select_input(moon: Moon390):
+async def cmd_select_input(moon: Moon390) -> None:
     # IMPORTANT: we do NOT auto-enumerate here. The only way to fetch A7 labels
     # is to send 0x24 (enable/disable), which MUTATES the unit's enabled inputs.
     # So menu 5 uses labels only if a prior explicit probe ('d') populated them;
@@ -258,7 +260,7 @@ async def cmd_select_input(moon: Moon390):
     print()
 
 
-async def cmd_raw(moon: Moon390):
+async def cmd_raw(moon: Moon390) -> None:
     line = (await ainput("  >> raw: <code-hex> [param-hex]  e.g. '60 02': ")).strip().split()
     if not line:
         return
@@ -291,7 +293,7 @@ MENU = """
 ================================================================
 """
 
-ACTIONS = {
+ACTIONS: dict[str, Callable[[Moon390], Awaitable[None]]] = {
     "1": listen_mode,
     "2": snapshot,
     "3": cmd_mute,
@@ -304,7 +306,7 @@ ACTIONS = {
 }
 
 
-async def main():
+async def main() -> None:
     host = (
         sys.argv[1]
         if len(sys.argv) > 1
