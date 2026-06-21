@@ -119,7 +119,7 @@ class Moon390:
     # ----------------------------------------------------------------- #
     # Reader loop
     # ----------------------------------------------------------------- #
-    async def _reader_loop(self) -> None:
+    async def _reader_loop(self) -> None:  # noqa: C901 -- flat read/dispatch/reconnect loop
         buffer = bytearray()
         backoff = 1
         while not self._closing:
@@ -171,56 +171,74 @@ class Moon390:
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("raw listener raised")
 
-        changed = True
-        code = frame.code
-        s = self.state
+        handler = self._RESP_HANDLERS.get(frame.code)
+        if handler is None:
+            return  # ACK / WAKEUP / unknown: nothing to update
         try:
-            if code == P.Resp.STATUS:
-                for k, v in models.parse_status(frame.params).items():
-                    setattr(s, k, v)
-            elif code == P.Resp.PRODUCT_INFO:
-                for k, v in models.parse_product_info(frame.params).items():
-                    setattr(s, k, v)
-            elif code == P.Resp.INPUT_SETUP:
-                setup = models.parse_input_setup(frame.params)
-                s.inputs[setup.input_id] = setup
-            elif code == P.Resp.EXPANDED_INFO:
-                s.serial = self._parse_serial(frame.params)
-            elif code == P.Resp.SONG_NAME:
-                tag, text = models.parse_media_text(frame.params)
-                s.media.source_tag, s.media.title = tag, text
-            elif code == P.Resp.ARTIST_NAME:
-                _, s.media.artist = models.parse_media_text(frame.params)
-            elif code == P.Resp.ALBUM_NAME:
-                _, s.media.album = models.parse_media_text(frame.params)
-            elif code == P.Resp.GENRE_NAME:
-                _, s.media.genre = models.parse_media_text(frame.params)
-            elif code == P.Resp.ALBUM_ART_URL:
-                _, s.media.image_url = models.parse_media_text(frame.params)
-            elif code == P.Resp.TOTAL_TRACK_TIME:
-                _, text = models.parse_media_text(frame.params)
-                s.media.duration_s = models.parse_track_time(text)
-            elif code == P.Resp.TRACK_PLAYING_TIME:
-                _, text = models.parse_media_text(frame.params)
-                s.media.position_s = models.parse_track_time(text)
-            elif code == P.Resp.ERROR:
-                try:
-                    b = frame.param_bytes
-                except Exception:  # noqa: BLE001 -- non-hex params (e.g. desync)
-                    b = []
-                if len(b) >= 2:
-                    _LOGGER.warning("unit error: %s", MoonCommandError(b[0], b[1]))
-                changed = False
-            elif code in (P.Resp.ACK, P.Resp.WAKEUP):
-                changed = False
-            else:
-                changed = False
+            changed = handler(self, frame)
         except Exception:  # noqa: BLE001 -- a bad frame must not kill the reader
             _LOGGER.exception("failed to handle %r", frame)
-            changed = False
-
+            return
         if changed:
             self._notify()
+
+    # -- Per-response handlers. Each mutates self.state from the frame and
+    #    returns whether the change is worth notifying listeners about. ---- #
+    def _on_status(self, frame: P.Frame) -> bool:
+        for k, v in models.parse_status(frame.params).items():
+            setattr(self.state, k, v)
+        return True
+
+    def _on_product_info(self, frame: P.Frame) -> bool:
+        for k, v in models.parse_product_info(frame.params).items():
+            setattr(self.state, k, v)
+        return True
+
+    def _on_input_setup(self, frame: P.Frame) -> bool:
+        setup = models.parse_input_setup(frame.params)
+        self.state.inputs[setup.input_id] = setup
+        return True
+
+    def _on_expanded_info(self, frame: P.Frame) -> bool:
+        self.state.serial = self._parse_serial(frame.params)
+        return True
+
+    # Plain now-playing text fields: response code -> MediaInfo attribute.
+    _MEDIA_TEXT_FIELDS: dict[int, str] = {
+        P.Resp.SONG_NAME: "title",
+        P.Resp.ARTIST_NAME: "artist",
+        P.Resp.ALBUM_NAME: "album",
+        P.Resp.GENRE_NAME: "genre",
+        P.Resp.ALBUM_ART_URL: "image_url",
+    }
+    # Track-time fields share a code -> attribute map but need int parsing.
+    _MEDIA_TIME_FIELDS: dict[int, str] = {
+        P.Resp.TOTAL_TRACK_TIME: "duration_s",
+        P.Resp.TRACK_PLAYING_TIME: "position_s",
+    }
+
+    def _on_media_text(self, frame: P.Frame) -> bool:
+        tag, text = models.parse_media_text(frame.params)
+        setattr(self.state.media, self._MEDIA_TEXT_FIELDS[frame.code], text)
+        if frame.code == P.Resp.SONG_NAME:
+            # Only SONG_NAME carries the source tag ('M' MiND / 'B' Bluetooth).
+            self.state.media.source_tag = tag
+        return True
+
+    def _on_media_time(self, frame: P.Frame) -> bool:
+        _, text = models.parse_media_text(frame.params)
+        seconds = models.parse_track_time(text)
+        setattr(self.state.media, self._MEDIA_TIME_FIELDS[frame.code], seconds)
+        return True
+
+    def _on_error(self, frame: P.Frame) -> bool:
+        try:
+            b = frame.param_bytes
+        except Exception:  # noqa: BLE001 -- non-hex params (e.g. desync)
+            b = []
+        if len(b) >= 2:
+            _LOGGER.warning("unit error: %s", MoonCommandError(b[0], b[1]))
+        return False  # logged, not surfaced as a state change
 
     @staticmethod
     def _parse_serial(params: bytes) -> str | None:
@@ -230,6 +248,23 @@ class Moon390:
         except Exception:  # noqa: BLE001
             return None
         return text or None
+
+    # Response-code dispatch table. Codes absent here (ACK, WAKEUP, and any
+    # unknown push) are intentionally ignored without notifying listeners.
+    _RESP_HANDLERS: dict[int, Callable[["Moon390", P.Frame], bool]] = {
+        P.Resp.STATUS: _on_status,
+        P.Resp.PRODUCT_INFO: _on_product_info,
+        P.Resp.INPUT_SETUP: _on_input_setup,
+        P.Resp.EXPANDED_INFO: _on_expanded_info,
+        P.Resp.SONG_NAME: _on_media_text,
+        P.Resp.ARTIST_NAME: _on_media_text,
+        P.Resp.ALBUM_NAME: _on_media_text,
+        P.Resp.GENRE_NAME: _on_media_text,
+        P.Resp.ALBUM_ART_URL: _on_media_text,
+        P.Resp.TOTAL_TRACK_TIME: _on_media_time,
+        P.Resp.TRACK_PLAYING_TIME: _on_media_time,
+        P.Resp.ERROR: _on_error,
+    }
 
     # ----------------------------------------------------------------- #
     # Low-level send
