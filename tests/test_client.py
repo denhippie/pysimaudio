@@ -131,6 +131,32 @@ def test_unknown_frame_ignored() -> None:
     # no exception == pass
 
 
+def test_connect_timeout_raises_moon_connection_error() -> None:
+    """A hung TCP connect must surface as MoonConnectionError, not hang."""
+    import asyncio
+    from unittest.mock import patch
+
+    from moon390 import MoonConnectionError, client as client_mod
+
+    async def _hang(*_args: object, **_kwargs: object) -> tuple[object, object]:
+        await asyncio.sleep(10)
+        return None, None
+
+    async def _run() -> None:
+        moon = Moon390("test")
+        try:
+            await moon.connect()
+        except MoonConnectionError:
+            return
+        raise AssertionError("expected MoonConnectionError")
+
+    with (
+        patch("asyncio.open_connection", _hang),
+        patch.object(client_mod, "_CONNECT_TIMEOUT", 0.01),
+    ):
+        asyncio.run(_run())
+
+
 def test_harness_printer_runs() -> None:
     """describe_frame must not raise on representative frames."""
     import manual_test

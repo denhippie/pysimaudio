@@ -116,10 +116,11 @@ All v1 features are hardware-verified. Single `media_player` entity, `local_push
 - **Features:** power on/off, volume set/step/mute, select source (14 Scheme-A inputs),
   transport PLAY/PAUSE/STOP/NEXT/PREVIOUS, media metadata (title/artist/album/art-URL/
   duration/position).
-- **Playback state (chosen: simple):** `OFF` if not powered; `IDLE` if powered but no media
-  title; `PLAYING` if powered + media present. **No PAUSED detection** (the PAUSE command still
-  works; we just don't reflect a Roon-side pause in `state`). Known wart: the interpolated
-  progress bar drifts forward while paused until the next B5 — accepted for v1.
+- **Playback state:** `OFF` if not powered; `IDLE` if powered but no media title; else
+  `PLAYING`/`PAUSED`. PAUSED is inferred via a B5 watchdog (the protocol has no pause flag):
+  each B5 position push re-arms a ~3s timer; if it lapses while media is loaded, the entity
+  flips to PAUSED (freezing HA's progress bar). ~3s lag before paused shows; resumes instantly
+  on the next B5. (Upgraded from the original simple playing-or-idle model.)
 - **Library delivery (chosen: vendored):** bundle `moon390/` inside `custom_components/moon390/`
   and import it relatively. No PyPI requirement; `manifest.json` has empty `requirements`.
 - **Identity:** `unique_id` = host/IP (serial is blank on this unit); `device_info` =

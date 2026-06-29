@@ -19,6 +19,11 @@ _LOGGER = logging.getLogger(__name__)
 
 Listener = Callable[[MoonState], None]
 
+# Bound the TCP connect so a slow/contended unit can never hang the caller
+# (e.g. Home Assistant startup). The MOON's control port accepts one connection
+# at a time, so a second controller can stall a connect indefinitely otherwise.
+_CONNECT_TIMEOUT = 10.0
+
 
 class Moon390:
     """Async client for one MOON Neo 390 unit."""
@@ -75,10 +80,8 @@ class Moon390:
     async def connect(self) -> None:
         self._closing = False
         try:
-            self._reader, self._writer = await asyncio.open_connection(
-                self.host, self.port
-            )
-        except OSError as err:
+            await self._open_connection()
+        except (OSError, asyncio.TimeoutError) as err:
             raise MoonConnectionError(
                 f"cannot connect to {self.host}:{self.port}: {err}"
             ) from err
@@ -86,6 +89,12 @@ class Moon390:
         self._reader_task = asyncio.ensure_future(self._reader_loop())
         await self._seed_state()
         self._notify()
+
+    async def _open_connection(self) -> None:
+        """Open the TCP stream with a bounded timeout (never hangs the caller)."""
+        self._reader, self._writer = await asyncio.wait_for(
+            asyncio.open_connection(self.host, self.port), _CONNECT_TIMEOUT
+        )
 
     async def disconnect(self) -> None:
         self._closing = True
@@ -152,13 +161,11 @@ class Moon390:
 
     async def _try_reconnect(self) -> None:
         try:
-            self._reader, self._writer = await asyncio.open_connection(
-                self.host, self.port
-            )
+            await self._open_connection()
             self.state.available = True
             await self._seed_state()
             self._notify()
-        except OSError:
+        except (OSError, asyncio.TimeoutError):
             pass  # loop will retry
 
     # ----------------------------------------------------------------- #

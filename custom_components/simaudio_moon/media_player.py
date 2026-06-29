@@ -13,9 +13,10 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
@@ -34,6 +35,11 @@ _SUPPORTED = (
     | MediaPlayerEntityFeature.NEXT_TRACK
     | MediaPlayerEntityFeature.PREVIOUS_TRACK
 )
+
+# Seconds without a B5 position push (while media is loaded) before we treat the
+# unit as paused. The protocol has no explicit pause flag -- only the ~1 Hz B5
+# pushes, which stop while paused. ~3s tolerates a couple of missed pushes.
+_PAUSE_TIMEOUT = 3.0
 
 
 async def async_setup_entry(
@@ -68,19 +74,54 @@ class MoonMediaPlayer(MediaPlayerEntity):
         # can interpolate the progress bar between pushes.
         self._position_updated_at: datetime | None = None
         self._last_position: int | None = None
+        # Pause is inferred from B5 pushes ceasing (no explicit protocol flag).
+        self._paused = False
+        self._pause_timer: CALLBACK_TYPE | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to the client's push updates."""
         self.async_on_remove(self._client.add_listener(self._handle_update))
+        self.async_on_remove(self._cancel_pause_timer)
 
     @callback
     def _handle_update(self, state: MoonState) -> None:
-        """Reflect a pushed state change in HA."""
+        """Reflect a pushed state change in HA, tracking play/pause via B5."""
         position = state.media.position_s
         if position != self._last_position:
             self._last_position = position
-            self._position_updated_at = dt_util.utcnow() if position is not None else None
+            if position is not None:
+                # Position advanced -> playing; (re)arm the pause watchdog.
+                self._position_updated_at = dt_util.utcnow()
+                self._paused = False
+                self._arm_pause_timer()
+            else:
+                self._position_updated_at = None
+        if not (state.powered and state.media.title):
+            # No media loaded (or powered off): nothing to pause-track.
+            self._cancel_pause_timer()
+            self._paused = False
         self.async_write_ha_state()
+
+    def _arm_pause_timer(self) -> None:
+        """(Re)start the watchdog that flips to PAUSED when B5 pushes stop."""
+        self._cancel_pause_timer()
+        self._pause_timer = async_call_later(
+            self.hass, _PAUSE_TIMEOUT, self._pause_timeout
+        )
+
+    @callback
+    def _cancel_pause_timer(self) -> None:
+        if self._pause_timer is not None:
+            self._pause_timer()
+            self._pause_timer = None
+
+    @callback
+    def _pause_timeout(self, _now: datetime) -> None:
+        """No B5 for _PAUSE_TIMEOUT while media is loaded -> treat as paused."""
+        self._pause_timer = None
+        if self._state.powered and self._state.media.title:
+            self._paused = True
+            self.async_write_ha_state()
 
     @property
     def _state(self) -> MoonState:
@@ -93,16 +134,18 @@ class MoonMediaPlayer(MediaPlayerEntity):
 
     @property
     def state(self) -> MediaPlayerState:
-        """OFF when in standby; PLAYING when media is present; else IDLE.
+        """OFF in standby; IDLE with no media; PAUSED when B5 stops; else PLAYING.
 
-        The protocol has no explicit play/pause flag, so v1 does not surface a
-        PAUSED state (see IMPLEMENTATION_PLAN.md §B0).
+        The protocol has no explicit play/pause flag, so PAUSED is inferred from
+        the ~1 Hz B5 position pushes ceasing (see _pause_timeout).
         """
         if not self._state.powered:
             return MediaPlayerState.OFF
-        if self._state.media.title:
-            return MediaPlayerState.PLAYING
-        return MediaPlayerState.IDLE
+        if not self._state.media.title:
+            return MediaPlayerState.IDLE
+        if self._paused:
+            return MediaPlayerState.PAUSED
+        return MediaPlayerState.PLAYING
 
     @property
     def volume_level(self) -> float | None:
