@@ -241,12 +241,19 @@ class Moon390:
 
     @staticmethod
     def _parse_serial(params: bytes) -> str | None:
-        """Best-effort serial extraction from an FE payload (subsystem 00)."""
-        try:
-            text = params.decode("ascii", errors="replace")
-        except Exception:  # noqa: BLE001
+        """Extract the serial number from an FE expanded-info payload.
+
+        FE params are ASCII (PROTOCOL_NOTES §7): subsystem id (2 chars) + serial
+        ``aaabbbbccccc`` (12 chars: date code / product no / serial) + further
+        fields. An all-zero serial field is the "unknown" sentinel -> ``None``
+        (HARDWARE FINDING 2026-06-29: this unit ships a blank serial, so HA falls
+        back to host for unique_id).
+        """
+        text = params.decode("ascii", errors="replace")
+        if len(text) < 14:
             return None
-        return text or None
+        serial = text[2:14]
+        return serial if serial.strip("0") else None
 
     # Response-code dispatch table. Codes absent here (ACK, WAKEUP, and any
     # unknown push) are intentionally ignored without notifying listeners.

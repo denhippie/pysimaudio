@@ -102,6 +102,27 @@ def test_error_frame_does_not_crash_or_notify() -> None:
     assert calls == []  # error frames don't fire state-change notifications
 
 
+def test_expanded_info_blank_serial_is_none() -> None:
+    # Real capture (2026-06-29): the all-zero serial field is the "unknown"
+    # sentinel and must parse to None so HA falls back to host for unique_id.
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.EXPANDED_INFO, b"0000000000000003006C02011500000100"))
+    assert moon.state.serial is None
+
+
+def test_expanded_info_real_serial_parsed() -> None:
+    # subsystem "00" + serial "00J007101234" (date 00J / product 0071 / serial 01234) + trailer.
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.EXPANDED_INFO, b"0000J0071012340100"))
+    assert moon.state.serial == "00J007101234"
+
+
+def test_expanded_info_short_payload_is_none() -> None:
+    moon = Moon390("test")
+    _feed(moon, P.build_frame(P.Resp.EXPANDED_INFO, b"0000"))
+    assert moon.state.serial is None
+
+
 def test_unknown_frame_ignored() -> None:
     moon = Moon390("test")
     _feed(moon, b"#04FF00\r")  # unknown code 0xFF
