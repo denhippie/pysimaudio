@@ -200,22 +200,25 @@ async def probe_media_info(moon: Moon390) -> None:
 async def probe_device_info(moon: Moon390) -> None:
     """Request product (A4) and expanded (FE) info; show raw bytes + parsed serial.
 
-    Verifies the intended HA unique_id source: _parse_serial is a STUB, so compare
-    the raw FE payload against the documented aaabbbbccccc layout (PROTOCOL_NOTES
-    §7) to decide whether serial is usable or we fall back to product-id + host.
+    Sweeps FE sub-systems 00..02 (this unit reports 3) in case a usable serial
+    lives outside the main sub-system -- main is blank (HARDWARE FINDING 2026-06-29),
+    so HA's unique_id currently falls back to host. Watch each EXPANDED_INFO raw line.
     """
     print(DIVIDER)
-    print("PROBE: device info -- A4 product + FE expanded. Watch the raw bytes.\n")
+    print("PROBE: device info -- A4 product + FE expanded, sub-systems 00..02.\n")
     detach = attach_printer(moon)
     await moon.send(P.build_command(P.Cmd.GET_PRODUCT_INFO))
-    await moon.send(P.build_command(P.Cmd.GET_EXPANDED_INFO, 0x00))
-    await asyncio.sleep(1.5)
+    for subsystem in (0x00, 0x01, 0x02):
+        print(f"  -> requesting FE sub-system {subsystem:#04x}")
+        await moon.send(P.build_command(P.Cmd.GET_EXPANDED_INFO, subsystem))
+        await asyncio.sleep(0.8)
     detach()
     s = moon.state
     print(
-        "\nParsed:\n"
+        "\nParsed (state reflects the LAST EXPANDED_INFO handled):\n"
         f"  product_id={s.product_id}  sw_rev={s.sw_rev}  comm_rev={s.comm_rev}\n"
         f"  serial(parsed)={s.serial!r}\n"
+        "  (compare the raw FE lines per sub-system above for a non-blank serial)\n"
     )
 
 

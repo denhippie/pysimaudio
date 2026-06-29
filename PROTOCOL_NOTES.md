@@ -321,8 +321,11 @@ powered-on — these are the unit's real values, not a standby artifact):**
   (date `000`=unknown / product `0000` / serial `00000`), qty `03`, product-id `006C` (108),
   HW rev `02`, firmware `01150000` (v1.21), comm `01`, boot `00`.
 - **This unit reports NO usable serial** (blank/unknown), powered or not → it cannot be the HA
-  `unique_id`. **Fall back to host/IP** (DHCP-reserve recommended). `_parse_serial` must extract
-  the `aaabbbbccccc` field and return `None` on the all-zero sentinel (today it dumps the blob).
+  `unique_id`. **Fall back to host/IP** (DHCP-reserve recommended). `_parse_serial` extracts the
+  `aaabbbbccccc` field and returns `None` on the all-zero sentinel (done).
+- **All 3 sub-systems swept (FE 00/01/02) — every serial field is blank**, so there is no serial
+  anywhere, not just in `main`. Sub `01`: product `016C`, fw v1.02; sub `02`: product `026C`, fw
+  v1.01 (the product-id high byte mirrors the sub-system index). Confirms host `unique_id`.
 - **`A4` product-info returns `FFFFFF`** (unimplemented on this model, powered or not). Use
   **`FE`** for `device_info` (product-id `0x6C`, firmware v1.21); model name is a static string.
 
