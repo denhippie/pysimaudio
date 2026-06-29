@@ -197,21 +197,21 @@ HA integration** — especially media metadata and the serial parse.
 - Volume set + nudge (`0x64` action 07 / 04 / 01); observed sane dB readback in `A3`.
 - Input selection (`0x63`) incl. BALANCED/ANALOG; `A3` echoes the selected id.
 - `A7` input-setup wire format (literal label, no enabled flag, bogus NN).
+- **Power on / standby / toggle (`0x60`)** — all three confirmed (2026-06-29).
+- **Transport (`0x67`–`0x6B`)** — PLAY / PAUSE / STOP / NEXT / PREVIOUS all work under Roon;
+  PAUSE is a play/pause toggle. Effects seen via feedback only (no ACK). (2026-06-29).
+- **Media metadata `AF`–`B5` over Roon** — song/artist/album/art-URL/total/position all present;
+  UTF-8 text; ~1 Hz B5; track-change + stop bursts characterized. (2026-06-29).
+- **Device identity (2026-06-29):** `A4` returns `FFFFFF` (unimplemented); `FE` serial is blank
+  (all-zero "unknown"); product-id `0x6C`, firmware v1.21 from `FE`. → host-based `unique_id`.
 
 **Implemented but NOT yet verified on hardware ⏳ — test these next**
-- Power on/off (`0x60`) — only the power *bit* in `A3` was observed, never toggled via IP.
 - Display on/off + intensity (`0x61`/`0x62`).
 - Balance *set* (`0x66`) — only decoded from `A3`, never written.
-- Transport: play/stop/pause/next/previous (`0x67`–`0x6B`) — nothing was playing.
 - Repeat/shuffle *set* (`0x6C`/`0x6D`).
-- Media metadata pushes `AF`–`B5` (song/artist/album/art/duration/position) — **untested;
-  nothing was streaming.** The ~1 Hz `B5` position push is likewise unobserved.
-- Sample-rate values other than `00` (none) — nothing was playing, so the rate table
-  (44.1k…DSD…MQA) is unconfirmed in practice.
-- `A4` product-info parse (prodID/swRev/commRev).
-- `A1` error handling — one `A1` was seen incidentally during the (now-removed) buggy
-  enumeration; the normal error path is otherwise unexercised.
+- `A1` error handling — provoke probe (`g`) not yet run.
 - Reconnection / exponential backoff on socket loss.
+- Sample-rate values other than `00` — confirm the rate table during hi-res playback.
 
 ## Known gaps / tech debt to address before or during Part B
 - **`_parse_serial` is a STUB.** It returns the whole `FE` payload decoded as ASCII, NOT the

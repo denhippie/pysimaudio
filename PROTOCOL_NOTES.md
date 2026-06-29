@@ -258,6 +258,16 @@ All take no params (`NN=02`) unless noted.
   empty B1/B0/AF/B3 (album/artist/song/art). Treat an empty payload as "clear this field"
   (→ `None`). NOTE: B4 total time is NOT re-sent empty, so `duration_s` lingers stale after
   stop — HA should null it out when transport state is idle/stopped.
+
+**[HARDWARE FINDING 2026-06-29 — transport under Roon] (raw capture):**
+- All transport commands **work** under Roon and are reflected in feedback:
+  `PLAY` (0x67), `PAUSE` (0x69), `STOP` (0x68), `NEXT` (0x6A), `PREVIOUS` (0x6B).
+  Next/prev trigger a track-change burst (empty B5 → new metadata → B5 restart); stop triggers
+  the all-empty clear burst.
+- `PAUSE` (0x69) is a **play/pause toggle**: position freezes while paused and resumes on the
+  next press (observed: paused at 0:29, resumed at 0:30 after a 2nd press ~3 s later).
+- No `ACK`/`A1` is returned for transport commands; the effect is observed only via feedback.
+- HA: advertise PLAY / PAUSE / STOP / NEXT / PREVIOUS (all functional).
 | FE   | Expanded product info        | 24   | see layout below. |
 
 ### Error codes (A1 param2)
@@ -304,6 +314,17 @@ Params after code `FE`:
 8. Boot code revision (1B)
 
 Example: `#24FE0000J00710123401007101010112340202<CR>`.
+
+**[HARDWARE FINDING 2026-06-29 — device identity] (raw capture, IDENTICAL in standby and
+powered-on — these are the unit's real values, not a standby artifact):**
+- `FE` payload: `0000000000000003006C02011500000100` → subsystem `00`, **serial all zeros**
+  (date `000`=unknown / product `0000` / serial `00000`), qty `03`, product-id `006C` (108),
+  HW rev `02`, firmware `01150000` (v1.21), comm `01`, boot `00`.
+- **This unit reports NO usable serial** (blank/unknown), powered or not → it cannot be the HA
+  `unique_id`. **Fall back to host/IP** (DHCP-reserve recommended). `_parse_serial` must extract
+  the `aaabbbbccccc` field and return `None` on the all-zero sentinel (today it dumps the blob).
+- **`A4` product-info returns `FFFFFF`** (unimplemented on this model, powered or not). Use
+  **`FE`** for `device_info` (product-id `0x6C`, firmware v1.21); model name is a static string.
 
 ---
 

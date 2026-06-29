@@ -197,6 +197,28 @@ async def probe_media_info(moon: Moon390) -> None:
     )
 
 
+async def probe_device_info(moon: Moon390) -> None:
+    """Request product (A4) and expanded (FE) info; show raw bytes + parsed serial.
+
+    Verifies the intended HA unique_id source: _parse_serial is a STUB, so compare
+    the raw FE payload against the documented aaabbbbccccc layout (PROTOCOL_NOTES
+    §7) to decide whether serial is usable or we fall back to product-id + host.
+    """
+    print(DIVIDER)
+    print("PROBE: device info -- A4 product + FE expanded. Watch the raw bytes.\n")
+    detach = attach_printer(moon)
+    await moon.send(P.build_command(P.Cmd.GET_PRODUCT_INFO))
+    await moon.send(P.build_command(P.Cmd.GET_EXPANDED_INFO, 0x00))
+    await asyncio.sleep(1.5)
+    detach()
+    s = moon.state
+    print(
+        "\nParsed:\n"
+        f"  product_id={s.product_id}  sw_rev={s.sw_rev}  comm_rev={s.comm_rev}\n"
+        f"  serial(parsed)={s.serial!r}\n"
+    )
+
+
 async def cmd_mute(moon: Moon390) -> None:
     detach = attach_printer(moon)
     print("Toggling mute...")
@@ -275,6 +297,128 @@ async def cmd_raw(moon: Moon390) -> None:
     print()
 
 
+async def cmd_transport(moon: Moon390) -> None:
+    """Send transport commands and watch what the unit pushes back.
+
+    UNVERIFIED on hardware: with Roon driving playback over RAAT, these IP commands
+    may or may not take effect. Watch the unit / Roon app and the printed frames.
+    """
+    transports: dict[str, tuple[str, Callable[[], Awaitable[None]]]] = {
+        "p": ("play", moon.play),
+        "u": ("pause", moon.pause),
+        "s": ("stop", moon.stop),
+        "n": ("next", moon.next_track),
+        "b": ("previous", moon.previous_track),
+    }
+    print(DIVIDER)
+    print("TRANSPORT: p=play  u=pause  s=stop  n=next  b=previous  (ENTER to stop)")
+    detach = attach_printer(moon)
+    try:
+        while True:
+            key = (await ainput("  transport> ")).strip().lower()
+            if not key:
+                break
+            entry = transports.get(key)
+            if entry is None:
+                print("  ?")
+                continue
+            name, fn = entry
+            print(f"  sending {name} ...")
+            await fn()
+            await asyncio.sleep(1.0)
+    finally:
+        detach()
+    print()
+
+
+async def cmd_power(moon: Moon390) -> None:
+    choice = (await ainput("  >> power [on / standby / toggle]: ")).strip().lower()
+    detach = attach_printer(moon)
+    if choice == "toggle":
+        await moon.send(P.build_command(P.Cmd.SET_POWER, P.Power.TOGGLE))
+    elif choice in ("on", "standby"):
+        await moon.set_power(choice == "on")
+    else:
+        print("  ?")
+        detach()
+        return
+    await asyncio.sleep(1.0)
+    detach()
+    await confirm("did the unit power state change as expected?")
+    print()
+
+
+async def cmd_repeat_shuffle(moon: Moon390) -> None:
+    print(DIVIDER)
+    print("REPEAT 0x6C: none/all/one   RANDOM 0x6D: on/off   (blank = skip)")
+    repeats = {"none": 0x01, "all": 0x02, "one": 0x03}
+    randoms = {"off": 0x01, "on": 0x02}
+    detach = attach_printer(moon)
+    r = (await ainput("  >> repeat [none/all/one]: ")).strip().lower()
+    if r in repeats:
+        await moon.send(P.build_command(P.Cmd.SET_REPEAT, repeats[r]))
+        await asyncio.sleep(0.8)
+    sh = (await ainput("  >> shuffle [on/off]: ")).strip().lower()
+    if sh in randoms:
+        await moon.send(P.build_command(P.Cmd.SET_RANDOM, randoms[sh]))
+        await asyncio.sleep(0.8)
+    detach()
+    print("  (check A3 state byte 2: repeat/shuffle bits)\n")
+
+
+async def cmd_display(moon: Moon390) -> None:
+    print(DIVIDER)
+    print("DISPLAY 0x61: on/off/toggle   INTENSITY 0x62: scroll/low/med/high   (blank = skip)")
+    disp = {"toggle": P.OnOff.TOGGLE, "on": P.OnOff.ON, "off": P.OnOff.OFF}
+    inten = {"scroll": 0x01, "low": 0x02, "med": 0x03, "high": 0x04}
+    detach = attach_printer(moon)
+    d = (await ainput("  >> display [on/off/toggle]: ")).strip().lower()
+    if d in disp:
+        await moon.send(P.build_command(P.Cmd.SET_DISPLAY, disp[d]))
+        await asyncio.sleep(0.8)
+    i = (await ainput("  >> intensity [scroll/low/med/high]: ")).strip().lower()
+    if i in inten:
+        await moon.send(P.build_command(P.Cmd.SET_DISPLAY_INTENSITY, inten[i]))
+        await asyncio.sleep(0.8)
+    detach()
+    await confirm("did the display change as expected?")
+    print()
+
+
+async def cmd_balance(moon: Moon390) -> None:
+    # 0x66 = action(01 left-5% / 02 right-5% / 03 set) + value(00 left .. 64 center .. C8 right).
+    print(DIVIDER)
+    print("BALANCE 0x66: left (nudge) / right (nudge) / center (set 0x64)")
+    detach = attach_printer(moon)
+    b = (await ainput("  >> balance [left/right/center]: ")).strip().lower()
+    actions = {
+        "left": (0x01, 0x00),
+        "right": (0x02, 0x00),
+        "center": (0x03, 0x64),
+    }
+    if b not in actions:
+        print("  ?")
+        detach()
+        return
+    action, value = actions[b]
+    await moon.send(P.build_command(P.Cmd.SET_BALANCE, action, value))
+    await asyncio.sleep(1.0)
+    detach()
+    await confirm("did the balance change as expected (check A3 balance byte)?")
+    print()
+
+
+async def probe_error(moon: Moon390) -> None:
+    """Provoke an A1 error to exercise the error path (unexercised on hardware)."""
+    print(DIVIDER)
+    print("PROBE: error handling. Sending an unknown command code (0x7F) -> expect A1.\n")
+    detach = attach_printer(moon)
+    await moon.send(P.build_command(0x7F))  # undefined command -> 'unknown command'
+    await asyncio.sleep(1.0)
+    detach()
+    print("  (an ERROR frame with cmd=0x7F should appear above)\n")
+
+
 MENU = """
 ==================  MOON Neo 390 manual test  ==================
   1  Listen mode            (you act on the unit, we report)
@@ -283,11 +427,18 @@ MENU = """
   4  Set / nudge volume
   5  Select input (by name)
   6  Raw send
+  7  Transport               (play/pause/stop/next/prev)
+  8  Power on / standby
+  9  Repeat / shuffle set
+  e  Display on/off + intensity
+  f  Balance (left/center/right)
 
   -- ambiguity probes (verify against hardware) --
   a  A3 status length        (NN 08 vs 10)
   b  0x63 BALANCED/ANALOG     (Scheme A vs B)
   c  Media info stream        (AF..B5 -- play music first)
+  d  Device info             (A4 product + FE serial)
+  g  Provoke error           (invalid cmd -> A1)
 
   q  quit
 ================================================================
@@ -300,9 +451,16 @@ ACTIONS: dict[str, Callable[[Moon390], Awaitable[None]]] = {
     "4": cmd_volume,
     "5": cmd_select_input,
     "6": cmd_raw,
+    "7": cmd_transport,
+    "8": cmd_power,
+    "9": cmd_repeat_shuffle,
+    "e": cmd_display,
+    "f": cmd_balance,
     "a": probe_a3_length,
     "b": probe_input_scheme,
     "c": probe_media_info,
+    "d": probe_device_info,
+    "g": probe_error,
 }
 
 
