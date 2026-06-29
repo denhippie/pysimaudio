@@ -24,7 +24,9 @@ import os
 import sys
 from collections.abc import Awaitable, Callable
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_components", "simaudio_moon")
+)
 
 from moon390 import Moon390, protocol as P  # noqa: E402
 from moon390 import models  # noqa: E402

@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)  # repo root, for `import manual_test`
+sys.path.insert(0, os.path.join(_ROOT, "custom_components", "simaudio_moon"))  # for `moon390`
 
 from moon390 import Moon390, protocol as P  # noqa: E402
 

@@ -19,7 +19,10 @@ dev = [
     "pytest-asyncio",
 ]
 
+# The library is vendored inside the HA component (no PyPI). Build config points
+# at its location; nothing here is published.
 [tool.setuptools.packages.find]
+where = ["custom_components/simaudio_moon"]
 include = ["moon390*"]
 
 [tool.mypy]
@@ -32,7 +35,9 @@ disallow_any_generics = true
 no_implicit_reexport = true
 show_error_codes = true
 pretty = true
-files = ["moon390", "tests", "manual_test.py"]
+# moon390 is vendored under the component; mypy_path lets `import moon390` resolve.
+mypy_path = "custom_components/simaudio_moon"
+files = ["custom_components/simaudio_moon/moon390", "tests", "manual_test.py"]
 
 [tool.ruff]
 line-length = 120
