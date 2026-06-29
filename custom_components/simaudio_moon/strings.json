@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter the IP address or hostname of your MOON Neo 390. A DHCP reservation is recommended so the address stays stable.",
+        "data": {
+          "host": "Host"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect"
+    },
+    "abort": {
+      "already_configured": "This MOON Neo 390 is already configured"
+    }
+  }
+}

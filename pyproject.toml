@@ -35,9 +35,12 @@ disallow_any_generics = true
 no_implicit_reexport = true
 show_error_codes = true
 pretty = true
-# moon390 is vendored under the component; mypy_path lets `import moon390` resolve.
+# moon390 is vendored under the component; mypy_path lets `import moon390` resolve
+# as a top-level package (it's checked transitively via the tests). The HA
+# integration files import `homeassistant` and are linted by ruff, not type-checked
+# here (that needs homeassistant installed -- a future CI concern).
 mypy_path = "custom_components/simaudio_moon"
-files = ["custom_components/simaudio_moon/moon390", "tests", "manual_test.py"]
+files = ["tests", "manual_test.py"]
 
 [tool.ruff]
 line-length = 120

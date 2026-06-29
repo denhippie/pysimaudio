@@ -1,0 +1,10 @@
+{
+  "domain": "simaudio_moon",
+  "name": "Simaudio MOON Neo 390",
+  "codeowners": ["@sobsec"],
+  "config_flow": true,
+  "documentation": "https://github.com/sobsec/pysimaudio",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "0.1.0"
+}
