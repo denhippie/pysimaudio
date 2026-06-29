@@ -109,6 +109,26 @@ Helpers: `volume_db = volume_raw/10`, `volume_level = volume_raw/800`.
 
 ## Part B — `custom_components/moon390` integration
 
+### B0. v1 scope — FINALIZED 2026-06-29
+All v1 features are hardware-verified. Single `media_player` entity, `local_push`,
+`should_poll=False`, entity subscribes to `client.add_listener` (no `DataUpdateCoordinator`).
+
+- **Features:** power on/off, volume set/step/mute, select source (14 Scheme-A inputs),
+  transport PLAY/PAUSE/STOP/NEXT/PREVIOUS, media metadata (title/artist/album/art-URL/
+  duration/position).
+- **Playback state (chosen: simple):** `OFF` if not powered; `IDLE` if powered but no media
+  title; `PLAYING` if powered + media present. **No PAUSED detection** (the PAUSE command still
+  works; we just don't reflect a Roon-side pause in `state`). Known wart: the interpolated
+  progress bar drifts forward while paused until the next B5 — accepted for v1.
+- **Library delivery (chosen: vendored):** bundle `moon390/` inside `custom_components/moon390/`
+  and import it relatively. No PyPI requirement; `manifest.json` has empty `requirements`.
+- **Identity:** `unique_id` = host/IP (serial is blank on this unit); `device_info` =
+  Simaudio / "MOON Neo 390" / `sw_version` from `FE` (v1.21). Ship the `_parse_serial` fix
+  (parse `aaabbbbccccc`, return `None` on the all-zero sentinel).
+- **Deferred to v2+:** zeroconf/DHCP discovery, options flow (hide/rename inputs), balance &
+  display control, repeat/shuffle *set* (A3 gives state today; `0x6C`/`0x6D` setters need the
+  quick `9` hardware check before wiring buttons).
+
 ### B1. Files
 ```
 custom_components/moon390/
